@@ -21,10 +21,10 @@ async function main() {
   if (!commonPassword || commonPassword.length < 12) throw new Error("Set SEED_TEST_PASSWORD to at least 12 characters before running the seed.");
   const passwordHash = await bcrypt.hash(commonPassword, 12);
   const [attendee, organizer] = await Promise.all([
-    prisma.user.upsert({ where: { email: "attendee@sidestage.test" }, update: { passwordHash, isEmailVerified: true }, create: { email: "attendee@sidestage.test", name: "Aarav Menon", role: UserRole.ATTENDEE, passwordHash, isEmailVerified: true } }),
-    prisma.user.upsert({ where: { email: "organizer@sidestage.test" }, update: { passwordHash, isEmailVerified: true }, create: { email: "organizer@sidestage.test", name: "Mira Rao", role: UserRole.ORGANIZER, passwordHash, isEmailVerified: true } }),
+    prisma.user.upsert({ where: { email: "attendee@sidestage.test" }, update: { passwordHash, isEmailVerified: true, sessionVersion: { increment: 1 } }, create: { email: "attendee@sidestage.test", name: "Aarav Menon", role: UserRole.ATTENDEE, passwordHash, isEmailVerified: true } }),
+    prisma.user.upsert({ where: { email: "organizer@sidestage.test" }, update: { passwordHash, isEmailVerified: true, sessionVersion: { increment: 1 } }, create: { email: "organizer@sidestage.test", name: "Mira Rao", role: UserRole.ORGANIZER, passwordHash, isEmailVerified: true } }),
   ]);
-  await prisma.user.upsert({ where: { email: "admin@sidestage.test" }, update: { passwordHash, isEmailVerified: true }, create: { email: "admin@sidestage.test", name: "Side Stage Admin", role: UserRole.ADMIN, passwordHash, isEmailVerified: true } });
+  await prisma.user.upsert({ where: { email: "admin@sidestage.test" }, update: { passwordHash, isEmailVerified: true, sessionVersion: { increment: 1 } }, create: { email: "admin@sidestage.test", name: "Side Stage Admin", role: UserRole.ADMIN, passwordHash, isEmailVerified: true } });
 
   for (const [index, [title, category, city, venue, price]] of eventSeed.entries()) {
     await prisma.event.upsert({
