@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ATTENDEE
+  ORGANIZER
+  ADMIN
+}
+
+enum OrganizerRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EventStatus {
+  DRAFT
+  PENDING_APPROVAL
+  PUBLISHED
+  CANCELLED
+  REJECTED
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  EXPIRED
+}
+
+enum TicketStatus {
+  VALID
+  CHECKED_IN
+  CANCELLED
+}
+
+enum AuthCodePurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model User {
+  id                String                  @id @default(cuid())
+  email             String                  @unique
+  passwordHash      String
+  name              String
+  role              UserRole                @default(ATTENDEE)
+  avatarUrl         String?
+  isEmailVerified   Boolean                 @default(false)
+  isActive          Boolean                 @default(true)
+  sessionVersion    Int                     @default(0)
+  organizerRequest  OrganizerRequestStatus?
+  authCodes         AuthCode[]
+  organizedEvents   Event[]                 @relation("EventOrganizer")
+  bookings          Booking[]
+  notifications     Notification[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+}
+
+model AuthCode {
+  id        String          @id @default(cuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   AuthCodePurpose
+  codeHash  String
+  attempts  Int             @default(0)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime        @default(now())
+
+  @@index([userId, purpose, createdAt])
+  @@index([expiresAt])
+}
+
+model Event {
+  id             String       @id @default(cuid())
+  organizerId    String
+  organizer      User         @relation("EventOrganizer", fields: [organizerId], references: [id])
+  title          String
+  description    String       @db.Text
+  category       String
+  city           String
+  venue          String?
+  onlineUrl      String?
+  bannerUrl      String?
+  startsAt       DateTime
+  endsAt         DateTime
+  status         EventStatus  @default(DRAFT)
+  ticketTypes    TicketType[]
+  bookings       Booking[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([status, startsAt])
+  @@index([category, city])
+}
+
+model TicketType {
+  id          String       @id @default(cuid())
+  eventId     String
+  event       Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name        String
+  priceCents  Int
+  capacity    Int
+  sold        Int          @default(0)
+  reserved    Int          @default(0)
+  salesOpenAt DateTime?
+  salesCloseAt DateTime?
+  bookings    Booking[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([eventId])
+}
+
+model Booking {
+  id           String        @id @default(cuid())
+  reference    String        @unique @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
+  eventId      String
+  event        Event         @relation(fields: [eventId], references: [id])
+  ticketTypeId String
+  ticketType   TicketType    @relation(fields: [ticketTypeId], references: [id])
+  quantity     Int
+  totalCents   Int
+  status       BookingStatus @default(PENDING)
+  holdExpiresAt DateTime
+  tickets      Ticket[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([status, holdExpiresAt])
+}
+
+model Ticket {
+  id          String       @id @default(cuid())
+  publicId    String       @unique @default(cuid())
+  bookingId   String
+  booking     Booking      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  status      TicketStatus @default(VALID)
+  checkedInAt DateTime?
+  createdAt   DateTime     @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String   @db.Text
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, readAt])
+}
