@@ -10,8 +10,11 @@ const registrationSchema = z.object({ name: z.string().trim().min(2).max(80), em
 export async function POST(request: Request) {
   try {
     const input = registrationSchema.parse(await request.json());
+    if (process.env.NODE_ENV === "production" && (!process.env.RESEND_API_KEY || !process.env.AUTH_EMAIL_FROM)) {
+      return Response.json({ error: { code: "EMAIL_DELIVERY_NOT_CONFIGURED", message: "Email verification is temporarily unavailable. Please try again later." } }, { status: 503 });
+    }
     const passwordHash = await bcrypt.hash(input.password, 12);
-    const user = await db.user.create({ data: { ...input, passwordHash }, select: { id: true, name: true, email: true, role: true } });
+    const user = await db.user.create({ data: { name: input.name, email: input.email, passwordHash }, select: { id: true, name: true, email: true, role: true } });
     try {
       const code = await createAuthCode(user.id, AuthCodePurpose.EMAIL_VERIFICATION);
       const delivery = await sendAuthCode(user.email, code, AuthCodePurpose.EMAIL_VERIFICATION);

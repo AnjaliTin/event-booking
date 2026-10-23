@@ -6,7 +6,7 @@ Side Stage is an event discovery and ticketing platform built with Next.js App R
 
 Implemented: database-backed event discovery with search/category/city/date/price filters; attendee registration with OTP email verification; login, logout, forgot/reset/change password; bcrypt hashes, signed HTTP-only cookies, role and ownership checks, session invalidation, profile editing and organizer requests; attendee booking/ticket pages; organizer event create/edit, sales dashboard, attendee list and QR scanner; admin event/organizer approvals and user role/suspension controls; atomic inventory holds, mock-only checkout, one QR ticket per seat, cancellation and one-time check-in; and seed data for three roles and ten events. OTP emails require provider configuration; local development exposes a temporary OTP in the UI.
 
-Still needed before submission: configure PostgreSQL and run migrations/seeds; exercise the database-backed flows; configure a production email sender; implement banner file uploads and any remaining polish; complete broader security and end-to-end tests; then deploy and verify a public URL. Hosting credentials and live URLs are not configured in this workspace.
+The Neon PostgreSQL database is configured, migrated, and seeded. The app is deployed to Vercel at https://event-booking-nine-bay.vercel.app; the public homepage and events API returned HTTP 200 in smoke checks. Still needed before submission: configure production email delivery and Cloudinary credentials, set up scheduled hold cleanup if desired, run authenticated booking/admin/check-in workflows against production, and complete broader security/end-to-end testing. Vercel Git auto-deploy integration is not connected; deployments currently use the CLI.
 
 ## Stack direction
 
@@ -45,7 +45,7 @@ Set `DATABASE_URL`, `AUTH_SECRET`, `APP_URL`, and `SEED_TEST_PASSWORD` in `.env`
 
 ## Deployment
 
-No live site or API URL has been configured. Create a hosted PostgreSQL database, set production environment variables in Vercel, deploy the Next.js application, run migrations and seed non-production test accounts, then verify the public URL and booking workflows before submission. Never claim a live deployment until it has been provisioned and tested.
+Live frontend and API: https://event-booking-nine-bay.vercel.app (API routes are served from the same origin). Deployment was verified with the homepage and `/api/v1/events` returning HTTP 200. Production Vercel variables currently include the rotated `DATABASE_URL` and `AUTH_SECRET`. Configure `RESEND_API_KEY`, `AUTH_EMAIL_FROM`, and `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` before using production email verification or banner upload. Never put secrets in this file or in source control.
 
 ## Documentation
 
