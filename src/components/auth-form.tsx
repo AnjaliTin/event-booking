@@ -24,7 +24,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
         setDevelopmentCode(result.data.developmentCode ?? "");
         return;
       }
-      router.push("/dashboard");
+      router.push("/#events");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not sign in.");
     } finally {
@@ -39,7 +39,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       const response = await fetch("/api/v1/auth/verify-email", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: pendingEmail, code: verificationCode }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error?.message ?? "Could not verify email.");
-      router.push("/dashboard");
+      router.push("/#events");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not verify email.");
     } finally {

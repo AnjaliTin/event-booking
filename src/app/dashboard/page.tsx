@@ -4,6 +4,8 @@ import { BookingStatus, UserRole } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AdminConsole } from "@/components/admin-console";
+import { BookingCancelButton } from "@/components/booking-cancel-button";
+import { EventDiscovery } from "@/components/event-discovery";
 
 export const instant = false;
 
@@ -37,14 +39,37 @@ export default async function DashboardPage() {
     </DashboardShell>;
   }
 
-  const bookings = await db.booking.findMany({ where: { userId: user.id }, include: { event: true, ticketType: true, tickets: true }, orderBy: { createdAt: "desc" } });
+  const [bookings, events] = await Promise.all([
+    db.booking.findMany({ where: { userId: user.id }, include: { event: true, ticketType: true, tickets: true }, orderBy: { createdAt: "desc" } }),
+    db.event.findMany({
+      where: { status: "PUBLISHED", startsAt: { gte: new Date() } },
+      include: { ticketTypes: { select: { priceCents: true } } },
+      orderBy: { startsAt: "asc" },
+    }),
+  ]);
   const upcoming = bookings.filter((booking) => booking.status === BookingStatus.CONFIRMED && booking.event.startsAt >= new Date());
   const paid = bookings.filter((booking) => booking.status === BookingStatus.CONFIRMED).reduce((total, booking) => total + booking.totalCents, 0);
   return <DashboardShell name={user.name} role="Attendee">
     <div className="grid gap-4 sm:grid-cols-3"><Metric label="Upcoming events" value={String(upcoming.length)} /><Metric label="Tickets in your account" value={String(bookings.reduce((sum, booking) => sum + booking.tickets.length, 0))} /><Metric label="Confirmed spend" value={currency(paid)} /></div>
     <section className="mt-12"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-[#e65e3f]">Your plans</p><h2 className="mt-2 font-serif text-3xl">Bookings and tickets</h2></div><Link href="/#events" className="text-sm font-semibold underline decoration-[#e65e3f] underline-offset-4">Find another event</Link></div>
-      <div className="mt-5 divide-y divide-[#dedbd3] border-y border-[#dedbd3]">{bookings.map((booking) => <article key={booking.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-serif text-xl">{booking.event.title}</h3><p className="mt-1 text-xs text-[#686a62]">{booking.event.city} · {new Date(booking.event.startsAt).toLocaleDateString("en-IN")} · {booking.quantity} × {booking.ticketType.name}</p></div><div className="flex items-center gap-4"><span className="text-sm font-semibold">{booking.status === BookingStatus.CONFIRMED ? currency(booking.totalCents) : booking.status}</span>{booking.tickets.length > 0 && <Link href="/tickets" className="text-xs font-bold text-[#e65e3f]">Tickets</Link>}</div></article>)}{bookings.length === 0 && <p className="py-6 text-sm text-[#686a62]">No bookings yet. Your next story is waiting.</p>}</div>
+      <div className="mt-5 divide-y divide-[#dedbd3] border-y border-[#dedbd3]">{bookings.map((booking) => {
+        const canCancel = booking.status === BookingStatus.PENDING || (booking.status === BookingStatus.CONFIRMED && booking.event.startsAt > new Date());
+        return <article key={booking.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div><h3 className="font-serif text-xl">{booking.event.title}</h3><p className="mt-1 text-xs text-[#686a62]">{booking.event.city} · {new Date(booking.event.startsAt).toLocaleDateString("en-IN")} · {booking.quantity} × {booking.ticketType.name}</p></div>
+          <div className="flex flex-wrap items-center gap-4"><span className="text-sm font-semibold">{booking.status === BookingStatus.CONFIRMED ? currency(booking.totalCents) : booking.status}</span>{booking.tickets.length > 0 && <Link href="/tickets" className="text-xs font-bold text-[#e65e3f]">Tickets</Link>}{canCancel && <BookingCancelButton bookingId={booking.id} />}</div>
+        </article>;
+      })}{bookings.length === 0 && <p className="py-6 text-sm text-[#686a62]">No bookings yet. Your next story is waiting.</p>}</div>
     </section>
+    <EventDiscovery events={events.map((event) => ({
+      id: event.id,
+      title: event.title,
+      category: event.category,
+      city: event.city,
+      venue: event.venue,
+      startsAt: event.startsAt.toISOString(),
+      priceCents: event.ticketTypes.length ? Math.min(...event.ticketTypes.map((ticket) => ticket.priceCents)) : null,
+      bannerUrl: event.bannerUrl,
+    }))} />
   </DashboardShell>;
 }
 

@@ -1,28 +1,49 @@
-import { BookingStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import { errorResponse } from "@/lib/http";
 
-export async function POST(request: Request) {
+async function expireBookings(request: Request) {
   try {
     const expectedToken = process.env.CRON_SECRET;
-    if (!expectedToken || request.headers.get("authorization") !== `Bearer ${expectedToken}`) return Response.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 });
-    const now = new Date();
+    if (!expectedToken || request.headers.get("authorization") !== ["Bearer", expectedToken].join(" ")) {
+      return Response.json({ error: { code: "UNAUTHORIZED", message: "Unauthorized" } }, { status: 401 });
+    }
+
     const result = await db.$transaction(async (tx) => {
-      const expired = await tx.booking.findMany({ where: { status: BookingStatus.PENDING, holdExpiresAt: { lte: now } }, select: { id: true, ticketTypeId: true, quantity: true } });
-      const byType = new Map<string, number>();
-      let expiredHolds = 0;
-      for (const booking of expired) {
-        const updated = await tx.booking.updateMany({ where: { id: booking.id, status: BookingStatus.PENDING }, data: { status: BookingStatus.EXPIRED } });
-        if (updated.count) {
-          expiredHolds += 1;
-          byType.set(booking.ticketTypeId, (byType.get(booking.ticketTypeId) ?? 0) + booking.quantity);
-        }
-      }
-      for (const [ticketTypeId, quantity] of byType) await tx.ticketType.update({ where: { id: ticketTypeId }, data: { reserved: { decrement: quantity } } });
-      return { expiredHolds };
-    }, { isolationLevel: "Serializable" });
+      const [expired] = await tx.$queryRaw<Array<{ expiredHolds: number }>>`
+        WITH expired AS (
+          UPDATE "Booking"
+          SET "status" = 'EXPIRED'::"BookingStatus", "updatedAt" = NOW()
+          WHERE "status" = 'PENDING'::"BookingStatus" AND "holdExpiresAt" <= NOW()
+          RETURNING "ticketTypeId", "quantity"
+        ),
+        released AS (
+          SELECT "ticketTypeId", SUM("quantity")::INTEGER AS "quantity"
+          FROM expired
+          GROUP BY "ticketTypeId"
+        ),
+        inventory AS (
+          UPDATE "TicketType" AS ticket_type
+          SET "reserved" = ticket_type."reserved" - released."quantity",
+              "updatedAt" = NOW()
+          FROM released
+          WHERE ticket_type."id" = released."ticketTypeId"
+          RETURNING ticket_type."id"
+        )
+        SELECT COUNT(*)::INTEGER AS "expiredHolds" FROM expired
+      `;
+      return { expiredHolds: expired.expiredHolds };
+    }, { isolationLevel: "Serializable", timeout: 15_000 });
+
     return Response.json({ data: result });
   } catch (error) {
     return errorResponse(error);
   }
+}
+
+export async function GET(request: Request) {
+  return expireBookings(request);
+}
+
+export async function POST(request: Request) {
+  return expireBookings(request);
 }

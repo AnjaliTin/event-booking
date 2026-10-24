@@ -12,10 +12,10 @@ export async function POST(request: Request, context: { params: Promise<{ bookin
     const user = await requireUser();
     paymentSchema.parse(await request.json());
     const { bookingId } = await context.params;
-    const result = await db.$transaction(async (tx) => {
+    const confirmedBookingId = await db.$transaction(async (tx) => {
       const booking = await tx.booking.findFirst({ where: { id: bookingId, userId: user.id }, include: { event: true, ticketType: true } });
       if (!booking) throw new Error("Not found");
-      if (booking.status === BookingStatus.CONFIRMED) return tx.booking.findUniqueOrThrow({ where: { id: booking.id }, include: { tickets: true, event: true, ticketType: true } });
+      if (booking.status === BookingStatus.CONFIRMED) return booking.id;
       if (booking.status !== BookingStatus.PENDING || booking.holdExpiresAt <= new Date()) throw new Error("This ticket hold has expired.");
 
       const confirmed = await tx.booking.updateMany({ where: { id: booking.id, userId: user.id, status: BookingStatus.PENDING, holdExpiresAt: { gt: new Date() } }, data: { status: BookingStatus.CONFIRMED } });
@@ -23,8 +23,9 @@ export async function POST(request: Request, context: { params: Promise<{ bookin
       const inventory = await tx.ticketType.updateMany({ where: { id: booking.ticketTypeId, reserved: { gte: booking.quantity } }, data: { reserved: { decrement: booking.quantity }, sold: { increment: booking.quantity } } });
       if (!inventory.count) throw new Error("Ticket inventory changed. Please contact support.");
       await tx.ticket.createMany({ data: Array.from({ length: booking.quantity }, () => ({ bookingId: booking.id })) });
-      return tx.booking.findUniqueOrThrow({ where: { id: booking.id }, include: { tickets: true, event: true, ticketType: true } });
-    }, { isolationLevel: "Serializable" });
+      return booking.id;
+    }, { isolationLevel: "Serializable", timeout: 15_000 });
+    const result = await db.booking.findUniqueOrThrow({ where: { id: confirmedBookingId, userId: user.id }, include: { tickets: true, event: true, ticketType: true } });
     const tickets = await Promise.all(result.tickets.map(async (ticket) => ({ ...ticket, qrDataUrl: await QRCode.toDataURL(ticket.publicId) })));
     return Response.json({ data: { ...result, tickets } });
   } catch (error) {

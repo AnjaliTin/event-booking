@@ -21,7 +21,7 @@ export type CatalogFilters = {
   sort: "date" | "date-desc" | "price";
 };
 
-export function filterEvents(events: CatalogEvent[], filters: CatalogFilters) {
+export function filterEvents<T extends CatalogEvent>(events: T[], filters: CatalogFilters): T[] {
   const query = filters.query.trim().toLowerCase();
   return events
     .filter((event) => filters.category === "All events" || event.category === filters.category)

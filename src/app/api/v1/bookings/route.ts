@@ -26,16 +26,26 @@ export async function POST(request: Request) {
       const now = new Date();
       if ((ticketType.salesOpenAt && ticketType.salesOpenAt > now) || (ticketType.salesCloseAt && ticketType.salesCloseAt <= now) || ticketType.event.startsAt <= now) throw new Error("Ticket sales are closed.");
 
-      const expired = await tx.booking.findMany({ where: { ticketTypeId, status: BookingStatus.PENDING, holdExpiresAt: { lte: now } }, select: { id: true, quantity: true } });
-      for (const hold of expired) {
-        const released = await tx.booking.updateMany({ where: { id: hold.id, status: BookingStatus.PENDING }, data: { status: BookingStatus.EXPIRED } });
-        if (released.count) await tx.ticketType.update({ where: { id: ticketTypeId }, data: { reserved: { decrement: hold.quantity } } });
-      }
+      await tx.$executeRaw`
+        WITH expired AS (
+          UPDATE "Booking"
+          SET "status" = ${BookingStatus.EXPIRED}::"BookingStatus", "updatedAt" = NOW()
+          WHERE "ticketTypeId" = ${ticketTypeId}
+            AND "status" = ${BookingStatus.PENDING}::"BookingStatus"
+            AND "holdExpiresAt" <= ${now}
+          RETURNING "quantity"
+        )
+        UPDATE "TicketType"
+        SET "reserved" = "reserved" - COALESCE((SELECT SUM("quantity") FROM expired), 0),
+            "updatedAt" = NOW()
+        WHERE "id" = ${ticketTypeId}
+          AND EXISTS (SELECT 1 FROM expired)
+      `;
 
       const reservedRows = await tx.$queryRaw<Array<{ id: string }>>`UPDATE "TicketType" SET "reserved" = "reserved" + ${quantity}, "updatedAt" = NOW() WHERE "id" = ${ticketTypeId} AND "sold" + "reserved" + ${quantity} <= "capacity" RETURNING "id"`;
       if (!reservedRows.length) throw new Error("Not enough tickets remain.");
       return tx.booking.create({ data: { userId: user.id, eventId: ticketType.eventId, ticketTypeId, quantity, totalCents: ticketType.priceCents * quantity, holdExpiresAt: new Date(now.getTime() + 10 * 60 * 1000) }, include: { event: true, ticketType: true } });
-    }, { isolationLevel: "Serializable" });
+    }, { isolationLevel: "Serializable", timeout: 15_000 });
 
     return Response.json({ data: booking }, { status: 201 });
   } catch (error) {
